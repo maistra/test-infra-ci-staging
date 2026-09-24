@@ -1,0 +1,24 @@
+---
+summary: Build and push maistra-builder container image (post-submit)
+
+prepare:
+  - name: Install Docker CE
+    how: shell
+    script: |
+      dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/centos/docker-ce.repo
+      dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin git
+      systemctl start docker
+      systemctl enable docker
+      docker info
+
+dicover:
+  how: shell
+  tests:
+    - name: /push-container
+      test: bash push-container.sh
+      path: /plans
+      duration: 5h
+
+execute:
+  how: tmt
+
