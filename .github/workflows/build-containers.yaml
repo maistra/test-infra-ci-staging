@@ -143,27 +143,23 @@ jobs:
               prNumber: parseInt(process.env.INPUT_PR_NUMBER)
             });
 
-      # Report detection result to the PR as a commit status, so the author
-      # gets immediate feedback about what's happening.
-      - name: Report build status to PR
+      # When no build-relevant files changed, report a success status on the
+      # PR commit so reviewers can see the check ran and explicitly decided
+      # there's nothing to build (as opposed to a silent skip).
+      - name: Report skipped build to PR
+        if: steps.detect.outputs.needs_build != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           INPUT_HEAD_SHA: ${{ inputs.head_sha }}
-          NEEDS_BUILD: ${{ steps.detect.outputs.needs_build }}
-          VERSIONS: ${{ steps.detect.outputs.versions }}
         with:
           script: |
-            const needsBuild = process.env.NEEDS_BUILD === 'true';
-            const versions = process.env.VERSIONS;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: process.env.INPUT_HEAD_SHA,
-              state: needsBuild ? 'pending' : 'success',
+              state: 'success',
               context: 'build containers',
-              description: needsBuild
-                ? `Building versions: ${JSON.parse(versions).join(', ')}...`
-                : 'No build-relevant files changed, skipped'
+              description: 'No build-relevant files changed, skipped'
             });
 
   # Build each affected version on a Testing Farm bare metal machine.
