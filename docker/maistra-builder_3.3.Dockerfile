@@ -151,3 +151,4 @@ RUN chmod +x /usr/local/bin/entrypoint
 # Run config setup in local environments
 COPY scripts/docker-entrypoint-3.0.sh /usr/local/bin/docker-entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
+#test
