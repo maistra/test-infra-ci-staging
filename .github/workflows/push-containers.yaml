@@ -99,7 +99,12 @@ jobs:
           arch: x86_64
           # TODO: initial estimates, not empirically validated. Measure and adjust (see "Hardware tuning" section)
           tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 200 GB"}], "cpu": {"processors": ">= 4"}}'
-          variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ inputs.use_staging_tags || 'false' }}"
+          # STAGING ONLY: vars.IS_STAGING forces staging tags to prevent accidental
+          # pushes with production tags. For production, comment this line and
+          # uncomment the one below.
+          variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ vars.IS_STAGING == 'true' && 'true' || inputs.use_staging_tags || 'false' }}"
+          # PRODUCTION: uncomment this line and comment the one above
+          # variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ inputs.use_staging_tags || 'false' }}"
           secrets: "QUAY_USER=maistra-dev+prow;QUAY_PASS=${{ secrets.QUAY_PASSWORD }}"
           timeout: 300
   # Build and push ARM images for multi-arch versions ONLY.
@@ -132,7 +137,12 @@ jobs:
           arch: aarch64
           # TODO: initial estimates, not empirically validated. Measure and adjust (see "Hardware tuning" section)
           tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 200 GB"}], "cpu": {"processors": ">= 4"}}'
-          variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ inputs.use_staging_tags || 'false' }}"
+          # STAGING ONLY: vars.IS_STAGING forces staging tags to prevent accidental
+          # pushes with production tags. For production, comment this line and
+          # uncomment the one below.
+          variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ vars.IS_STAGING == 'true' && 'true' || inputs.use_staging_tags || 'false' }}"
+          # PRODUCTION: uncomment this line and comment the one above
+          # variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ inputs.use_staging_tags || 'false' }}"
           secrets: "QUAY_USER=maistra-dev+prow;QUAY_PASS=${{ secrets.QUAY_PASSWORD }}"
           timeout: 300
 
@@ -159,7 +169,11 @@ jobs:
       - name: Create and push manifest
         env:
           VERSION: ${{ matrix.version }}
-          STAGING: ${{ inputs.use_staging_tags == true && '-staging' || ''}}
+          # STAGING ONLY: vars.IS_STAGING forces '-staging' suffix. For production,
+          # comment this line and uncomment the one below.
+          STAGING: ${{ (vars.IS_STAGING == 'true' || inputs.use_staging_tags == true) && '-staging' || ''}}
+          # PRODUCTION: uncomment this line and comment the one above
+          # STAGING: ${{ inputs.use_staging_tags == true && '-staging' || ''}}
         run: |
           HUB=quay.io/maistra-dev
           TAG="${VERSION}${STAGING}"
