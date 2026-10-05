@@ -20,8 +20,8 @@ jobs:
               id: app-token
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
               with:
-                  client-id: ${{ vars.OSSM_ORG_MEM_GH_APP_CLIENT_ID }}
-                  private-key: ${{ secrets.OSSM_ORG_MEM_GH_APP_PRIVATE_KEY }}
+                  client-id: ${{ vars.MAISTRA_ORG_MEM_GH_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.MAISTRA_ORG_MEM_GH_APP_PRIVATE_KEY }}
                   owner: ${{ github.repository_owner }}
 
             - name: Check authorization and manage CI
@@ -96,4 +96,3 @@ jobs:
                               }).catch( () => {});
                           }
                       }
-                
