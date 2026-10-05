@@ -109,7 +109,7 @@ BEHIND=$(git rev-list --count "$BRANCH..$UPSTREAM_REMOTE/$BRANCH" 2>/dev/null ||
 
 echo "  Staging commits on top: $STAGING_COUNT"
 if [[ -n "$STAGING_COMMITS" ]]; then
-  echo "$STAGING_COMMITS" | sed 's/^/    /'
+  while IFS= read -r line; do echo "    $line"; done <<< "$STAGING_COMMITS"
 fi
 echo "  Commits behind upstream: $BEHIND"
 
