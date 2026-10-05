@@ -1,0 +1,152 @@
+name: Build containers
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number"
+        required: true
+        type: string
+      head_sha:
+        description: "PR head SHA to build"
+        required: true
+        type: string
+      base_ref:
+        description: "PR base branch"
+        required: true
+        type: string
+      source_repo:
+        description: "PR head repo clone URL (github.com HTTPS only)"
+        required: true
+        type: string
+
+concurrency:
+  group: build-pr-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
+  pull-requests: read
+
+jobs:
+  detect-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.detect.outputs.versions }}
+      needs_build: ${{ steps.detect.outputs.needs_build }}
+    steps:
+      - name: Validate inputs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_HEAD_SHA: ${{ inputs.head_sha }}
+          INPUT_BASE_REF: ${{ inputs.base_ref }}
+          INPUT_SOURCE_REPO: ${{ inputs.source_repo }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.INPUT_PR_NUMBER);
+            const headSha = process.env.INPUT_HEAD_SHA;
+            const baseRef = process.env.INPUT_BASE_REF;
+            const sourceRepo = process.env.INPUT_SOURCE_REPO;
+
+            if (isNaN(prNumber) || prNumber <= 0) {
+              core.setFailed(`Invalid pr_number: ${process.env.INPUT_PR_NUMBER}`);
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/.test(headSha)) {
+              core.setFailed(`Invalid head_sha format: ${headSha}`);
+              return;
+            }
+            if (!/^[a-zA-Z0-9_.\-\/]+$/.test(baseRef) || baseRef.includes('..')) {
+              core.setFailed(`Invalid base_ref format: ${baseRef}`);
+              return;
+            }
+            if (!/^https:\/\/github\.com\/[a-zA-Z0-9_.\-]+\/[a-zA-Z0-9_.\-]+\.git$/.test(sourceRepo)) {
+              core.setFailed(`Invalid source_repo: ${sourceRepo}`);
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            if (pr.head.sha !== headSha) {
+              const compare = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: headSha,
+                head: pr.head.sha
+              });
+              if (!['ahead', 'identical'].includes(compare.data.status)) {
+                core.setFailed(`head_sha ${headSha} does not belong to PR #${prNumber}`);
+                return;
+              }
+              core.warning(`Building ancestor commit ${headSha} (PR HEAD is now ${pr.head.sha})`);
+            }
+
+            if (!pr.head.repo) {
+              const baseCloneUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}.git`;
+              if (sourceRepo !== baseCloneUrl) {
+                core.setFailed(`PR fork deleted and source_repo ${sourceRepo} is not the base repo`);
+                return;
+              }
+            } else if (sourceRepo !== pr.head.repo.clone_url) {
+              core.setFailed(`source_repo ${sourceRepo} does not match PR head repo ${pr.head.repo.clone_url}`);
+              return;
+            }
+
+            core.info(`Inputs validated: PR #${prNumber}, SHA ${headSha}`);
+      
+      - name: Checkout repo (needed to load detect-versions.js)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Detect Changed versions
+        id: detect
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            const detect = require('./.github/scripts/detect-versions.js');
+            await detect({
+              github, context, core,
+              mode: 'pr',
+              prNumber: parseInt(process.env.INPUT_PR_NUMBER)
+            });
+    
+  build:
+    needs: detect-versions
+    if: needs.detect-versions.outputs.needs_build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        version: ${{ fromJSON(needs.detect-versions.outputs.versions) }}
+    name: "build maistra-builder:${{ matrix.version }}"
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      
+      - name: Build on Testing Farm
+        uses: sclorg/testing-farm-as-github-action@230555baceb860aa468d216f1822974836b965d1 # v4
+        with:
+          api_key: ${{ secrets.TESTING_FARM_API_TOKEN }}
+          api_url: https://api.testing-farm.io/v0.1
+          git_url: https://github.com/${{ github.repository }}.git
+          git_ref: ${{ inputs.base_ref }}
+          tmt_plan_regex: ^/plans/build-container$
+          compose: CentOS-Stream-10
+          arch: x86_64
+          #TODO: initial estimates, not validated. Measure and adjust
+          tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 200 GB"}], "cpu": {"processors": ">= 4"}}'
+          variables: "BUILDER_VERSION=${{ matrix.version }};SOURCE_REPO=${{ inputs.source_repo }};SOURCE_REF=${{ inputs.head_sha }}"
+          timeout: 300
+          update_pull_request_status: true
+          pull_request_status_name: "build maistra-builder:${{ matrix.version }}"
+          commit_sha: ${{ inputs.head_sha }}
+          pr_number: ${{ inputs.pr_number }}
+
