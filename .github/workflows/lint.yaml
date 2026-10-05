@@ -1,9 +1,11 @@
 name: Lint
 
+# Runs shellcheck on all .sh files in the repo for every PR.
 on:
   pull_request:
     branches: [main]
 
+# Only one lint run per PR at a time.
 concurrency:
   group: lint-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -16,7 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Checkout repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Install shellcheck
         env:
           SHELLCHECK_VERSION: "0.10.0"

@@ -1,5 +1,12 @@
 name: Build containers
 
+# This workflow builds maistra-builder container images for PRs.
+# It is NOT triggered directly by PR events. Instead, ci-auth.yaml checks
+# org membership and dispatches this workflow with the PR details.
+# This indirection prevents untrusted fork code from running with repo secrets.
+#
+# Flow: PR opened -> ci-auth checks membership -> dispatches this workflow
+#       -> detect which versions changed -> build each on Testing Farm
 on:
   workflow_dispatch:
     inputs:
@@ -20,22 +27,32 @@ on:
         required: true
         type: string
 
+# Only one build per PR at a time. If a new push arrives, cancel the old build.
 concurrency:
   group: build-pr-${{ inputs.pr_number }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  statuses: write
-  pull-requests: read
+  statuses: write       # to report build status on the PR commit
+  pull-requests: read   # to fetch PR metadata for input validation
 
 jobs:
+  # Validate that the dispatch inputs are legitimate and detect
+  # which builder versions need rebuilding based on changed files.
   detect-versions:
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.detect.outputs.versions }}
       needs_build: ${{ steps.detect.outputs.needs_build }}
     steps:
+      # validate all inputs before using them. Since this workflow
+      # is triggered via workflow_dispatch, anyone with write access could
+      # call it with arbitrary values. We verify:
+      # - pr_number is a positive integer
+      # - head_sha is a valid 40-char hex SHA that belongs to the PR
+      # - base_ref has no path traversal (..)
+      # - source_repo matches the PR's actual head repo URL
       - name: Validate inputs
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
@@ -50,6 +67,7 @@ jobs:
             const baseRef = process.env.INPUT_BASE_REF;
             const sourceRepo = process.env.INPUT_SOURCE_REPO;
 
+            // Format validation
             if (isNaN(prNumber) || prNumber <= 0) {
               core.setFailed(`Invalid pr_number: ${process.env.INPUT_PR_NUMBER}`);
               return;
@@ -67,6 +85,9 @@ jobs:
               return;
             }
 
+            // Cross-check: verify the SHA actually belongs to this PR.
+            // The PR may have been updated since ci-auth dispatched us,
+            // so we accept any ancestor of the current HEAD.
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -87,6 +108,8 @@ jobs:
               core.warning(`Building ancestor commit ${headSha} (PR HEAD is now ${pr.head.sha})`);
             }
 
+            // Cross-check: verify source_repo matches the PR's fork URL.
+            // pr.head.repo is null when the fork has been deleted.
             if (!pr.head.repo) {
               const baseCloneUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}.git`;
               if (sourceRepo !== baseCloneUrl) {
@@ -103,7 +126,10 @@ jobs:
       - name: Checkout repo (needed to load detect-versions.js)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Detect Changed versions
+      # Runs detect-versions.js in 'pr' mode: lists files changed in the PR
+      # and determines which builder versions are affected.
+      # See detect-versions.js for full documentation of outputs.
+      - name: Detect changed versions
         id: detect
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
@@ -117,6 +143,10 @@ jobs:
               prNumber: parseInt(process.env.INPUT_PR_NUMBER)
             });
     
+  # Build each affected version on a Testing Farm bare metal machine.
+  # Runs one TF request per version in parallel (up to max-parallel).
+  # Each TF run executes plans/build-container.fmf which installs Docker,
+  # clones the PR branch, and runs `make build-containers-<version>`.
   build:
     needs: detect-versions
     if: needs.detect-versions.outputs.needs_build == 'true'
@@ -136,6 +166,9 @@ jobs:
         with:
           api_key: ${{ secrets.TESTING_FARM_API_TOKEN }}
           api_url: https://api.testing-farm.io/v0.1
+          # TF clones plans/ from the base branch (security: untrusted PR code
+          # cannot modify the build scripts). The PR code is cloned separately
+          # inside the TMT script using SOURCE_REPO and SOURCE_REF.
           git_url: https://github.com/${{ github.repository }}.git
           git_ref: ${{ inputs.base_ref }}
           tmt_plan_regex: ^/plans/build-container$
@@ -145,6 +178,7 @@ jobs:
           tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 200 GB"}], "cpu": {"processors": ">= 4"}}'
           variables: "BUILDER_VERSION=${{ matrix.version }};SOURCE_REPO=${{ inputs.source_repo }};SOURCE_REF=${{ inputs.head_sha }}"
           timeout: 300
+          # Report build status directly on the PR commit
           update_pull_request_status: true
           pull_request_status_name: "build maistra-builder:${{ matrix.version }}"
           commit_sha: ${{ inputs.head_sha }}

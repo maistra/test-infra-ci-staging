@@ -1,8 +1,21 @@
 name: Push containers
 
+# This workflow builds and pushes maistra-builder images to quay.io after
+# a PR is merged to main. It also supports manual dispatch for ad-hoc pushes.
+#
+# Flow for automatic (post-merge):
+#   PR merged to main -> GHA detects changed files -> detect which versions
+#   are affected -> build & push x86 images for ALL affected versions
+#   -> build & push ARM images for multi-arch versions only
+#   -> create multi-arch manifest combining x86 + ARM
+#
+# Flow for manual:
+#   workflow_dispatch with explicit version -> build & push that version only
 on:
   push:
     branches: [main]
+    # Only trigger when build-relevant files change.
+    # This matches the paths used by detect-versions.js.
     paths:
       - "docker/maistra-builder_*.Dockerfile"
       - "docker/scripts/**"
@@ -21,11 +34,18 @@ permissions:
   contents: read
 
 jobs:
+  # Figure out which versions need pushing.
+  # Three possible scenarios:
+  #   - Manual dispatch with version: push exactly that version
+  #   - Push to main: auto-detect from changed files
+  #   - Manual dispatch without version: error (can't auto-detect without push context)
   detect-versions:
     runs-on: ubuntu-latest
     outputs:
       needs_push: ${{ steps.detect.outputs.needs_build }}
+      # matrix_all: all affected versions (used by push-x86, every version gets x86)
       matrix_all: ${{ steps.detect.outputs.matrix_all }}
+      # matrix_multi: only multi-arch versions (used by push-arm and create-manifest)
       matrix_multi: ${{ steps.detect.outputs.matrix_multi }}
     steps:
       - name: Checkout repo
@@ -41,13 +61,19 @@ jobs:
             const detect = require('./.github/scripts/detect-versions.js');
             const manualVersion = (process.env.INPUT_VERSION || '').trim();
             if (manualVersion) {
+              // Manual dispatch: push exactly the requested version
               await detect({github, context, core, mode: 'manual', version: manualVersion});
             } else if (context.eventName === 'push') {
+              // Auto-detect: compare before/after commits to find changed files
               await detect({github, context, core, mode: 'push'});
             } else {
               core.setFailed('workflow_dispatch requires a version input when not triggered by push');
             }
 
+  # Build and push x86_64 images for ALL affected versions.
+  # Uses matrix_all because every version gets at least an x86 image.
+  # Each TF run executes plans/push-container.fmf which installs Docker,
+  # builds the image, and pushes it to quay.io.
   push-x86:
     needs: detect-versions
     if: needs.detect-versions.outputs.needs_push == 'true'
@@ -76,6 +102,11 @@ jobs:
           variables: "BUILDER_VERSION=${{ matrix.version }};PUSH_MODE=${{ matrix.push_mode }};USE_STAGING_TAGS=${{ inputs.use_staging_tags || 'false' }}"
           secrets: "QUAY_USER=maistra-dev+prow;QUAY_PASS=${{ secrets.QUAY_PASSWORD }}"
           timeout: 300
+  # Build and push ARM images for multi-arch versions ONLY.
+  # Uses matrix_multi which excludes single-arch versions (2.3, 2.4).
+  # The fromJSON(...)[0] != null guard prevents this job from failing
+  # when matrix_multi is empty (e.g., only version 2.3 changed).
+  # Runs in parallel with push-x86 (both depend only on detect-versions).
   push-arm:
     needs: detect-versions
     if: needs.detect-versions.outputs.needs_push == 'true' && fromJSON(needs.detect-versions.outputs.matrix_multi)[0] != null
@@ -105,6 +136,12 @@ jobs:
           secrets: "QUAY_USER=maistra-dev+prow;QUAY_PASS=${{ secrets.QUAY_PASSWORD }}"
           timeout: 300
 
+  # Create multi-arch manifests that combine the x86 and ARM images.
+  # Runs AFTER both push-x86 and push-arm complete (needs both).
+  # Only for multi-arch versions. The manifest allows `docker pull` to
+  # automatically select the right architecture.
+  # This runs on a plain ubuntu runner (no TF needed) since docker manifest
+  # only manipulates registry metadata, it doesn't build anything.
   create-manifest:
     needs: [detect-versions, push-x86, push-arm]
     if: needs.detect-versions.outputs.needs_push == 'true' && fromJSON(needs.detect-versions.outputs.matrix_multi)[0] != null
@@ -117,6 +154,8 @@ jobs:
     steps:
       - name: Login to quay.io
         run: docker login -u="maistra-dev+prow" -p="${{ secrets.QUAY_PASSWORD }}" quay.io
+      # Combines the per-arch images (tagged -x86_64 and -aarch64) into
+      # a single multi-arch manifest under the version tag.
       - name: Create and push manifest
         env:
           VERSION: ${{ matrix.version }}
