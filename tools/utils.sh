@@ -76,3 +76,4 @@ trace() {
   set -x
   "$@"
 }
+# test
