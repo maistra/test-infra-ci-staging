@@ -5,7 +5,7 @@ prepare:
   - name: Install Docker CE
     how: shell
     script: |
-      dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/centos/docker-ce.repo
+      dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
       dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin git
       systemctl start docker
       systemctl enable docker
