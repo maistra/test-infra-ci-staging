@@ -142,7 +142,26 @@ jobs:
               mode: 'pr',
               prNumber: parseInt(process.env.INPUT_PR_NUMBER)
             });
-    
+
+      # When no build-relevant files changed, report a success status on the
+      # PR commit so reviewers can see the check ran and explicitly decided
+      # there's nothing to build (as opposed to a silent skip).
+      - name: Report skipped build to PR
+        if: steps.detect.outputs.needs_build != 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          INPUT_HEAD_SHA: ${{ inputs.head_sha }}
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.INPUT_HEAD_SHA,
+              state: 'success',
+              context: 'build containers',
+              description: 'No build-relevant files changed, skipped'
+            });
+
   # Build each affected version on a Testing Farm bare metal machine.
   # Runs one TF request per version in parallel (up to max-parallel).
   # Each TF run executes plans/build-container.fmf which installs Docker,
