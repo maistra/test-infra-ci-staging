@@ -121,7 +121,7 @@ module.exports = async function detect({ github, context, core, mode, prNumber, 
     } else if (mode === 'push') {
         // Push mode: compare the before and after commits of the push event
         //            to find which files changed, then extract affected versions.
-        const compare = await github.rest.repos.compareCommitsWithBaseHead({
+        const compare = await github.rest.repos.compareCommitsWithBasehead({
             owner: context.repo.owner,
             repo: context.repo.repo,
             basehead: `${context.payload.before}...${context.payload.after}`
