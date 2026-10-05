@@ -22,7 +22,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Install shellcheck
         env:
-          SHELLCHECK_VERSION: "0.10.0"
+          # Must match the version in maistra-builder:2.4 (Prow build_root).
+          # v0.10.0 fails with SC2317 false positives on trap-registered functions
+          # in docker/scripts/entrypoint.sh and prow-entrypoint-main.sh.
+          SHELLCHECK_VERSION: "0.8.0"
         run: |
           wget -qO- "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | tar -xJf -
           sudo cp "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/
