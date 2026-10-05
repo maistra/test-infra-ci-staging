@@ -6,7 +6,7 @@ prepare:
     how: shell
     script: |
       dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin git
+      dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin git make
       systemctl start docker
       systemctl enable docker
       docker info
