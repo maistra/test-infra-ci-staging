@@ -11,7 +11,7 @@ prepare:
       systemctl enable docker
       docker info
 
-dicover:
+discover:
   how: shell
   tests:
     - name: /push-container
