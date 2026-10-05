@@ -135,7 +135,7 @@ module.exports = async function detect({ github, context, core, mode, prNumber, 
     // If no build-relevant files changed, set all outputs to empty/false and exit
     if (!versionList) {
         core.info('No build-relevant files changed, skipping');
-        core.setOutput('needs-build', 'false');
+        core.setOutput('needs_build', 'false');
         core.setOutput('versions', '[]');
         core.setOutput('matrix_all', '[]');
         core.setOutput('matrix_multi', '[]');
@@ -144,7 +144,7 @@ module.exports = async function detect({ github, context, core, mode, prNumber, 
 
     // Build two matrices and set outputs
     const { all, multi } = classifyVersions(versionList);
-    core.setOutput('needs-build', 'true');
+    core.setOutput('needs_build', 'true');
     core.setOutput('versions', JSON.stringify(versionList));
     core.setOutput('matrix_all', JSON.stringify(all));
     core.setOutput('matrix_multi', JSON.stringify(multi));
