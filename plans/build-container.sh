@@ -27,23 +27,23 @@ echo "Image built: maistra-builder:${VERSION}"
 # The entrypoint starts dockerd and writes its log to ${ARTIFACTS}/dockerd.log.
 # By mounting a host directory and setting ARTIFACTS, we can read the log
 # even if dockerd never starts and the container is killed.
-# Run detached and wait 30s: enough for dockerd to either start or fail.
 mkdir -p /tmp/docker-debug
-docker run -d --name dind-selftest --privileged \
+SELF_TEST_EXIT=0
+timeout 120 docker run --privileged \
   -v "${PWD}:/work" --workdir /work \
   -v /var/lib/docker \
   -v /tmp/docker-debug:/debug \
   -e ARTIFACTS=/debug \
   --entrypoint entrypoint \
   "${HUB}/maistra-builder:${VERSION}" \
-  make "maistra-builder_${VERSION}"
+  make "maistra-builder_${VERSION}" || SELF_TEST_EXIT=$?
 
-sleep 30
+if [ "$SELF_TEST_EXIT" -ne 0 ]; then
+  echo "=== DinD self-test failed (exit $SELF_TEST_EXIT) ==="
+  echo "=== dockerd.log ==="
+  cat /tmp/docker-debug/dockerd.log 2>/dev/null || echo "(no dockerd.log found)"
+  echo "=== end dockerd.log ==="
+  exit 1
+fi
 
-echo "=== dockerd.log ==="
-cat /tmp/docker-debug/dockerd.log 2>/dev/null || echo "(no dockerd.log found)"
-echo "=== end dockerd.log ==="
-
-docker stop dind-selftest 2>/dev/null || true
-docker rm dind-selftest 2>/dev/null || true
-exit 1
+echo "Build validation passed for maistra-builder:${VERSION}"
