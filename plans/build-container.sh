@@ -18,5 +18,32 @@ export HUB=quay.io/maistra-dev
 git clone "${SOURCE_REPO}" /tmp/source
 cd /tmp/source
 git checkout "${SOURCE_REF}"
-make "build-containers-${VERSION}"
+# Step 1: build the image (Makefile target maistra-builder_VERSION)
+make "maistra-builder_${VERSION}"
+echo "Image built: maistra-builder:${VERSION}"
+
+# Step 2: self-test DinD (same as Makefile target build-containers-VERSION,
+# but with a volume mount to capture dockerd.log for debugging).
+# The entrypoint starts dockerd and writes its log to ${ARTIFACTS}/dockerd.log.
+# By mounting a host directory and setting ARTIFACTS, we can read the log
+# even if dockerd never starts and the container is killed.
+mkdir -p /tmp/docker-debug
+SELF_TEST_EXIT=0
+timeout 120 docker run --privileged \
+  -v "${PWD}:/work" --workdir /work \
+  -v /var/lib/docker \
+  -v /tmp/docker-debug:/debug \
+  -e ARTIFACTS=/debug \
+  --entrypoint entrypoint \
+  "${HUB}/maistra-builder:${VERSION}" \
+  make "maistra-builder_${VERSION}" || SELF_TEST_EXIT=$?
+
+if [ "$SELF_TEST_EXIT" -ne 0 ]; then
+  echo "=== DinD self-test failed (exit $SELF_TEST_EXIT) ==="
+  echo "=== dockerd.log ==="
+  cat /tmp/docker-debug/dockerd.log 2>/dev/null || echo "(no dockerd.log found)"
+  echo "=== end dockerd.log ==="
+  exit 1
+fi
+
 echo "Build validation passed for maistra-builder:${VERSION}"
