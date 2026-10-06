@@ -1,5 +1,6 @@
 HUB ?= quay.io/maistra-dev
 CONTAINER_CLI ?= docker
+TAG_SUFFIX ?=
 
 BUILD_IMAGE = maistra-builder
 BUILD_IMAGE_VERSIONS = $(BUILD_IMAGE)_3.5 $(BUILD_IMAGE)_3.4 $(BUILD_IMAGE)_3.3 $(BUILD_IMAGE)_3.2 $(BUILD_IMAGE)_3.1 $(BUILD_IMAGE)_3.0 $(BUILD_IMAGE)_2.6 $(BUILD_IMAGE)_2.5 $(BUILD_IMAGE)_2.4 $(BUILD_IMAGE)_2.3 $(BUILD_IMAGE)_2.2 $(BUILD_IMAGE)_main
@@ -29,7 +30,7 @@ BUILDX_BUILD_ARGS = --build-arg TARGETOS=$(TARGET_OS) --build-arg BUILDKIT_PARAL
 # Only build single arch image by using the build command
 ${BUILD_IMAGE}_%:
 	@echo "Building single-platform image with $(CONTAINER_CLI)" && \
-	$(CONTAINER_CLI) build -t ${HUB}/${BUILD_IMAGE}:$* -f docker/$@.Dockerfile docker
+	$(CONTAINER_CLI) build -t ${HUB}/${BUILD_IMAGE}:$*${TAG_SUFFIX} -f docker/$@.Dockerfile docker
 
 # Build a maistra version for the platforms described in the PLATFORMS var. 
 # Example of usage: make maistra-builder_2.5_multi
@@ -37,13 +38,13 @@ ${BUILD_IMAGE}_%:
 ${BUILD_IMAGE}_%_multi:
 	@if [ "$(CONTAINER_CLI)" = "podman" ]; then \
 		echo "Building multi-platform image with podman" && \
-		$(CONTAINER_CLI) manifest create ${HUB}/${BUILD_IMAGE}:$* && \
-		$(CONTAINER_CLI) build --platform $(PLATFORMS) --manifest ${HUB}/${BUILD_IMAGE}:$* -f docker/$(@:%_multi=%).Dockerfile docker; \
+		$(CONTAINER_CLI) manifest create ${HUB}/${BUILD_IMAGE}:$*${TAG_SUFFIX} && \
+		$(CONTAINER_CLI) build --platform $(PLATFORMS) --manifest ${HUB}/${BUILD_IMAGE}:$*${TAG_SUFFIX} -f docker/$(@:%_multi=%).Dockerfile docker; \
 	else \
 		echo "Building multi-platform image with docker buildx" && \
 		$(CONTAINER_CLI) buildx create --name project-v4-builder && \
 		$(CONTAINER_CLI) buildx use project-v4-builder && \
-		$(CONTAINER_CLI) buildx build $(BUILDX_OUTPUT_FLAG) --platform=$(PLATFORMS) --tag ${HUB}/${BUILD_IMAGE}:$* $(BUILDX_BUILD_ARGS) -f docker/$(@:%_multi=%).Dockerfile docker && \
+		$(CONTAINER_CLI) buildx build $(BUILDX_OUTPUT_FLAG) --platform=$(PLATFORMS) --tag ${HUB}/${BUILD_IMAGE}:$*${TAG_SUFFIX} $(BUILDX_BUILD_ARGS) -f docker/$(@:%_multi=%).Dockerfile docker && \
 		$(CONTAINER_CLI) buildx rm project-v4-builder ;\
 	fi
 
@@ -55,14 +56,14 @@ ${BUILD_IMAGE}.push: ${BUILD_IMAGE}
 ${BUILD_IMAGE}_%.push:
 	@echo "Building and pushing single-platform image" && \
 	$(MAKE) ${BUILD_IMAGE}_$* && \
-	$(CONTAINER_CLI) push ${HUB}/${BUILD_IMAGE}:$*
+	$(CONTAINER_CLI) push ${HUB}/${BUILD_IMAGE}:$*${TAG_SUFFIX}
 
 # Build and push multi image. Example of usage: make maistra-builder_2.5.push_multi
 ${BUILD_IMAGE}_%.push_multi:
 	@echo "Building and pushing multi-platform image" && \
 	if [ "$(CONTAINER_CLI)" = "podman" ]; then \
 		$(MAKE) ${BUILD_IMAGE}_$*_multi && \
-		$(CONTAINER_CLI) manifest push ${HUB}/${BUILD_IMAGE}:$*; \
+		$(CONTAINER_CLI) manifest push ${HUB}/${BUILD_IMAGE}:$*${TAG_SUFFIX}; \
 	else \
 		BUILDX_OUTPUT="--push" $(MAKE) ${BUILD_IMAGE}_$*_multi; \
 	fi \
@@ -73,4 +74,4 @@ lint:
 
 # these will build the containers and then try to use them to build themselves again, making sure we didn't break docker support
 build-containers-%: ${BUILD_IMAGE}_%
-	$(CONTAINER_CLI) run --privileged -v ${PWD}:/work --workdir /work -v /var/lib/docker --entrypoint entrypoint ${HUB}/maistra-builder:$* make maistra-builder_$*
+	$(CONTAINER_CLI) run --privileged -v ${PWD}:/work --workdir /work -v /var/lib/docker --entrypoint entrypoint ${HUB}/maistra-builder:$*${TAG_SUFFIX} make maistra-builder_$*
