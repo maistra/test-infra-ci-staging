@@ -2,7 +2,7 @@
 summary: Build and push maistra-builder container image (post-submit)
 
 prepare:
-  - name: Install Docker CE
+  - name: Install Docker CE and QEMU
     how: shell
     script: |
       dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
@@ -10,6 +10,10 @@ prepare:
       systemctl start docker
       systemctl enable docker
       docker info
+      # Register QEMU user-mode emulators for cross-architecture builds.
+      # This enables buildx to cross-compile ARM images on x86 machines
+      # via QEMU, matching how Prow builds multi-arch images.
+      docker run --privileged --rm tonistiigi/binfmt --install all
 
 discover:
   how: shell
