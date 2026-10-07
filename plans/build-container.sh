@@ -3,7 +3,9 @@
 set -euo pipefail
 
 # --- STAGING ONLY: resource monitoring (do NOT migrate to production) ---
-METRICS_LOG="/tmp/resource-metrics.log"
+# Write metrics to TMT_TEST_DATA so they appear as a downloadable artifact,
+# not mixed into the test stdout (which buildx floods with output).
+METRICS_LOG="${TMT_TEST_DATA:-/tmp}/resource-metrics.log"
 (
   echo "=== SYSTEM INFO ==="
   echo "CPUs: $(nproc)"
@@ -42,10 +44,8 @@ git checkout "${SOURCE_REF}"
 make "build-containers-${VERSION}"
 echo "Build validation passed for maistra-builder:${VERSION}"
 
-# --- STAGING ONLY: print resource summary (do NOT migrate to production) ---
+# --- STAGING ONLY: stop resource monitoring (do NOT migrate to production) ---
 kill "$METRICS_PID" 2>/dev/null || true
 wait "$METRICS_PID" 2>/dev/null || true
-echo ""
-echo "=== RESOURCE USAGE LOG ==="
-cat "$METRICS_LOG"
+echo "Resource metrics saved to: ${METRICS_LOG}"
 # --- END STAGING ONLY ---
