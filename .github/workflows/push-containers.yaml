@@ -97,7 +97,7 @@ jobs:
           compose: CentOS-Stream-10
           arch: x86_64
           # TODO: initial estimates, not empirically validated
-          tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 200 GB"}], "cpu": {"processors": ">= 4"}}'
+          tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 100 GB"}], "cpu": {"processors": ">= 32"}}'
           # TAG_SUFFIX comes from repo variable. In the test repo it is
           # "-staging", in production it is empty (not configured).
           # The Makefile appends TAG_SUFFIX to the image tag.

@@ -218,7 +218,7 @@ jobs:
           compose: CentOS-Stream-10
           arch: x86_64
           #TODO: initial estimates, not validated. Measure and adjust
-          tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 200 GB"}], "cpu": {"processors": ">= 4"}}'
+          tmt_hardware: '{"memory": ">= 16 GB", "disk": [{"size": ">= 100 GB"}], "cpu": {"processors": ">= 32"}}'
           variables: "BUILDER_VERSION=${{ matrix.version }};SOURCE_REPO=${{ inputs.source_repo }};SOURCE_REF=${{ inputs.head_sha }}"
           timeout: 300
           # Report build status directly on the PR commit
