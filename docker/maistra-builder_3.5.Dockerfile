@@ -1,5 +1,5 @@
 FROM registry.access.redhat.com/ubi9/ubi:9.8
-
+# test: trigger build for code review fix verification
 ENV GOLANG_VERSION=1.26.4
 ENV GOPROXY="https://proxy.golang.org,direct"
 ENV GO111MODULE=on
