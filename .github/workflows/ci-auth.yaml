@@ -78,7 +78,11 @@ jobs:
                              username: sender,
                           });
                           isMember = (res.status === 204);
+                      // Fail-closed: any API error (rate-limit, 500, network) treats the
+                      // user as non-member. Safe but may temporarily block legitimate
+                      // members. A new push or PR reopen will re-trigger this check.
                       } catch (e) {
+                          core.warning(`Org membership check failed: ${e.message}`);
                           isMember = false;
                       }
 

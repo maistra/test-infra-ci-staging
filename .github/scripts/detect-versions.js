@@ -23,23 +23,19 @@
 // GHA outputs set by this script:
 // - needs_build => 'true' if there are versions to build, 'false' otherwise
 // - versions => JSON array of version strings.. e.g. '["3.5", "main"]'
-// - matrix_all => JSON array of {version, push_mode} objects for ALL versions
-// - matrix_multi => same as matrix_all but filtered to multi-arch versions only
-//
-// matrix_all is used by push-x86. All versiones get an x86 image.
-// matrix_multi is used by push-arm and create-manifests. Only multi-arch versions get an ARM image an multi-arch manifest
+// - matrix_all => JSON array of {version, push_mode} objects for ALL versions.
+//   Used by push-containers.yaml to select the make target (push vs push_multi).
+// - matrix_multi => same but filtered to multi-arch versions only (currently unused,
+//   reserved for future use if ARM builds are separated from push_multi).
 
-// Every maistra-builder version we know about
+// Every maistra-builder version we know about.
 // Each one corresponds to a Dockerfile: `docker/maistra-builder_<version>.Dockerfile`
+// 2.2 excluded: CentOS Stream 8 EOL, mirrors dead, Prow never had jobs for it.
+// 2.3, 2.4 included but unbuildable for the same reason (Prow had jobs).
 const ALL_VERSIONS = ['2.3', '2.4', '2.5', '2.6', '3.0', '3.1', '3.2', '3.3', '3.4', '3.5', 'main'];
 
 // Versions that only produce x86 images
 const SINGLE_ARCH_VERSIONS = ['2.3', '2.4'];
-
-// File path patterns that affect a SPECIFIC version (one Dockerfile = one version).
-const VERSION_PATHS = [
-  /^docker\/maistra-builder_.*\.Dockerfile$/
-];
 
 // File path patterns that affect ALL versions.
 // Makefile defines how every image is built.
@@ -92,7 +88,7 @@ function extractVersions(files) {
         .filter(v => v !== null);
     
     // No build-relevant files changed at all
-    if (versions.lenth === 0) return null;
+    if (versions.length === 0) return null;
 
     // Set() removes duplicates ( just in case )
     return [...new Set(versions)];
@@ -106,7 +102,9 @@ module.exports = async function detect({ github, context, core, mode, prNumber, 
     let versionList;
 
     if (mode === 'manual' && version) {
-        // Manual mode: build exactly the requested version, no detection needed.
+        if (!ALL_VERSIONS.includes(version)) {
+            core.warning(`Version '${version}' is not in ALL_VERSIONS. Build may fail.`);
+        }
         versionList = [version];
     } else if (mode === 'pr') {
         // PR mode: fetch the list of files changed in the PR from Github API

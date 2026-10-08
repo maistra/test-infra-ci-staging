@@ -32,6 +32,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: push-containers
+  cancel-in-progress: false
+
 jobs:
   # Job 1: Figure out which versions need pushing.
   # Two possible scenarios:
