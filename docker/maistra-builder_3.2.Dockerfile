@@ -1,5 +1,5 @@
 FROM quay.io/fedora/fedora:41
-
+# test: measure build time for Fedora 41 builder
 ENV GOLANG_VERSION=1.24.6
 ENV GOPROXY="https://proxy.golang.org,direct"
 ENV GO111MODULE=on
