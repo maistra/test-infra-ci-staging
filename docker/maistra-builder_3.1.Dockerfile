@@ -1,5 +1,5 @@
 FROM quay.io/fedora/fedora:41
-
+# test: trigger build for code review fix verification
 ENV GOLANG_VERSION=1.24.5
 ENV GOPROXY="https://proxy.golang.org,direct"
 ENV GO111MODULE=on
