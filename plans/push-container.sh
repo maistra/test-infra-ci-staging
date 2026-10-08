@@ -43,7 +43,7 @@ export HUB=quay.io/maistra-dev
 
 cd "${ROOT_REPO}"
 
-docker login -u="${QUAY_USER}" -p="${QUAY_PASS}" quay.io
+echo "${QUAY_PASS}" | docker login -u="${QUAY_USER}" --password-stdin quay.io
 
 # Use the same Makefile targets as Prow:
 #   single-arch (2.3, 2.4): make maistra-builder_VERSION.push
