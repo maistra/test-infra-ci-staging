@@ -155,10 +155,12 @@ jobs:
           INPUT_HEAD_SHA: ${{ inputs.head_sha }}
           NEEDS_BUILD: ${{ steps.detect.outputs.needs_build }}
           VERSIONS: ${{ steps.detect.outputs.versions }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             const sha = process.env.INPUT_HEAD_SHA;
             const needsBuild = process.env.NEEDS_BUILD === 'true';
+            const runUrl = process.env.RUN_URL;
 
             if (!needsBuild) {
               await github.rest.repos.createCommitStatus({
@@ -171,6 +173,19 @@ jobs:
               });
               return;
             }
+
+            // Workflow-level status linking to this GHA run.
+            // Lets reviewers navigate from the PR checks to the workflow run
+            // where "Re-run failed jobs" is available.
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: 'pending',
+              context: 'build containers',
+              description: 'Build workflow running',
+              target_url: runUrl
+            });
 
             // Post a pending status for each version using the same context
             // that the TF action will use, so TF overwrites ours when it starts.
@@ -226,4 +241,42 @@ jobs:
           pull_request_status_name: "build maistra-builder:${{ matrix.version }}"
           commit_sha: ${{ inputs.head_sha }}
           pr_number: ${{ inputs.pr_number }}
+
+  # Update the workflow-level commit status after all builds finish.
+  # This status ("build containers") links to the GHA workflow run,
+  # giving reviewers a direct path to "Re-run failed jobs".
+  report-result:
+    needs: [detect-versions, build]
+    if: always() && needs.detect-versions.outputs.needs_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report final build status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          INPUT_HEAD_SHA: ${{ inputs.head_sha }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const result = process.env.BUILD_RESULT;
+            const descriptions = {
+              success: 'All builds passed',
+              failure: 'One or more builds failed',
+              cancelled: 'Build was cancelled'
+            };
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.INPUT_HEAD_SHA,
+              state: result === 'success' ? 'success' : 'failure',
+              context: 'build containers',
+              description: descriptions[result] || `Build ${result}`,
+              target_url: process.env.RUN_URL
+            });
+
+            // Fail this job when builds failed so that "Re-run failed jobs"
+            // also re-runs report-result and updates the commit status.
+            if (result !== 'success') {
+              core.setFailed(descriptions[result] || `Build ${result}`);
+            }
 
